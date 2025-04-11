@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +62,7 @@ fun CalculatorUI() {
             expression = expression,
             onExpressionChange = { expression = it },
             onResultChange = { result = it },
-            onEvaluate = { result = evaluate(expression) }
+            onEvaluate = { result = evaluate(expression).toString() }
         )
     }
 }
@@ -91,7 +90,12 @@ fun TextField(expression: String, result: String) {
 }
 
 @Composable
-fun Controls(expression: String, onExpressionChange: (String) -> Unit, onResultChange: (String) -> Unit, onEvaluate: () -> Unit) {
+fun Controls(
+    expression: String,
+    onExpressionChange: (String) -> Unit,
+    onResultChange: (String) -> Unit,
+    onEvaluate: () -> Unit
+) {
     Row {
         Button("", "complex") {}
         Button("", "complex") {}
@@ -113,7 +117,7 @@ fun Controls(expression: String, onExpressionChange: (String) -> Unit, onResultC
         Button("4", "num") { onExpressionChange(expression + "4") }
         Button("5", "num") { onExpressionChange(expression + "5") }
         Button("6", "num") { onExpressionChange(expression + "6") }
-        Button("x", "basic") { onExpressionChange(expression + "x") }
+        Button("*", "basic") { onExpressionChange(expression + "*") }
         Button("", "basic") {  }
     }
     Row {
@@ -130,10 +134,6 @@ fun Controls(expression: String, onExpressionChange: (String) -> Unit, onResultC
         Button("+", "basic") { onExpressionChange("$expression+") }
         Button("=", "basic") { onEvaluate() }
     }
-}
-
-fun evaluate(expression: String): String {
-    return "2"
 }
 
 @Composable
@@ -156,7 +156,7 @@ fun Button(label: String, type: String, onClick: () -> Unit) {
 
 @Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
+fun CalculatorPreview() {
     CalculatorTheme {
         CalculatorUI()
     }

@@ -115,8 +115,12 @@ fun CalculatorUI() {
             onExpressionChange = { expression = it },
             onResultChange = { result = it },
             onEvaluate = {
-                result = evaluate(expression).toString()
-                history.add(Pair(expression, result))
+                try {
+                    result = evaluate(expression).toString()
+                    history.add(Pair(expression, result))
+                } catch (e: Exception) {
+                    Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+                }
             },
             onExport = { saveHistory(context, history) }
         )

@@ -1,9 +1,11 @@
 package de.feleuxens.calculator
 
+import android.util.Log
 import androidx.collection.MutableIntList
 
 fun evaluate(expression: String): Number {
     val literals = parseLiterals(expression.replace("\\s".toRegex(), ""))
+    Log.i("literals: ", literals.toString())
     val parser = LiteralParser(literals)
     val tree = parser.parse()
 
@@ -23,6 +25,8 @@ fun evaluateExpression(tree: Expr): Number = when (tree) {
     is Expr.BinaryOp -> {
         val left = evaluateExpression(tree.left)
         val right = evaluateExpression(tree.right)
+        if (right.toDouble() == 0.0 && tree.op == '/')
+            throw IllegalArgumentException("Division by zero.")
         when (tree.op) {
             '+' -> left.toDouble() + right.toDouble()
             '-' -> left.toDouble() - right.toDouble()
@@ -83,8 +87,7 @@ class LiteralParser(val tokens: List<Literal>) {
     }
 
     private fun parsePrimary(): Expr {
-        val token = current()
-        return when (token) {
+        return when (val token = current()) {
             is Literal.Num -> {
                 advance()
                 Expr.Num(token.value)

@@ -3,9 +3,22 @@ package de.feleuxens.calculator
 import android.util.Log
 import androidx.collection.MutableIntList
 
+fun verifyValidity(literals: List<Literal>): Unit {
+    var count = 0
+    for ((i,lit) in literals.withIndex()) {
+        if (lit is Literal.CloseParentheses)
+            count -= 1
+        if (lit is Literal.OpenParentheses)
+            count += 1
+        if (count < 0)
+            throw  IllegalArgumentException("Unexpected ')' at $i")
+    }
+    if (count != 0) throw  IllegalArgumentException("Invalid number of brackets")
+}
+
 fun evaluate(expression: String): Number {
     val literals = parseLiterals(expression.replace("\\s".toRegex(), ""))
-    Log.i("literals: ", literals.toString())
+    verifyValidity(literals)    // throws exception if invalid
     val parser = LiteralParser(literals)
     val tree = parser.parse()
 

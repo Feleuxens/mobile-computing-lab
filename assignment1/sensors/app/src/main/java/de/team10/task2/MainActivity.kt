@@ -1,19 +1,18 @@
 package de.team10.task2
 
 import android.app.Application
+import android.app.Service
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.ServiceConnection
 import android.os.Bundle
-import android.os.IBinder
+import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.ComponentActivity.BIND_AUTO_CREATE
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -21,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 
 
@@ -47,13 +48,40 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun MainContent(modifier: Modifier, application: Application) {
+
+    Row {
+        SensorView(
+            application,
+            LightSensorReader::class.java,
+            0f,
+            1000,
+            10000,
+            "de.team10.task2.timer.light.UPDATE",
+                "de.team10.task2.timer.light.THRESHOLD"
+        )
+
+
+        SensorView(
+            application,
+            ProximitySensorReader::class.java,
+            10f,
+            1000,
+            5,
+            "de.team10.task2.timer.proximity.UPDATE",
+            "de.team10.task2.timer.proximity.THRESHOLD"
+        )
+    }
+}
+
+@Composable
+fun <T: Service> SensorView(application: Application, cls: Class<T>, defaultValue: Float, intervalDefault: Long, thresholdDefault: Long, updateTopic: String, thresholdTopic: String) {
     val context = LocalContext.current
-    var intervalText by remember { mutableStateOf("1000") }
-    var thresholdText by remember { mutableStateOf("10000") }
+    var intervalText by remember { mutableStateOf(intervalDefault.toString()) }
+    var thresholdText by remember { mutableStateOf(thresholdDefault.toString()) }
 
-    var sensorValue by remember { mutableStateOf(0.0f) }
+    var sensorValue by remember { mutableFloatStateOf(0.0f) }
 
-    val receiver = object : BroadcastReceiver() {
+    val receiverUpdate = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val value = intent?.getFloatExtra("value", 0.0f)
             if (value != null) {
@@ -62,7 +90,19 @@ fun MainContent(modifier: Modifier, application: Application) {
         }
     }
 
-    LocalBroadcastManager.getInstance(application).registerReceiver(receiver, IntentFilter("de.team10.task2.timer.UPDATE"))
+    val receiverThreshold = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val value = intent?.getFloatExtra("value", 0.0f)
+            if (value != null) {
+                Toast.makeText(application, value.toString(), Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+
+
+
+    LocalBroadcastManager.getInstance(application).registerReceiver(receiverUpdate, IntentFilter(updateTopic))
+    LocalBroadcastManager.getInstance(application).registerReceiver(receiverThreshold, IntentFilter(thresholdTopic))
 
     Column {
         TextField(
@@ -81,14 +121,15 @@ fun MainContent(modifier: Modifier, application: Application) {
 
         Button(
             onClick = {
-                val interval = intervalText.toLongOrNull() ?: 1000
-                val threshold = thresholdText.toLongOrNull() ?: 10000
-                val intent = Intent(context, SensorReader::class.java).apply {
+                val interval = intervalText.toLongOrNull() ?: intervalDefault
+                val threshold = thresholdText.toLongOrNull() ?: thresholdDefault
+                val intent = Intent(context, cls).apply {
                     action = "START_TIMER"
                     putExtra("interval", interval)
                     putExtra("threshold", threshold)
                 }
-                context.startService(intent)
+                ContextCompat.startForegroundService(application, intent)
+                // context.startService(intent)
             }
         ) {
             Text("Start Service")
@@ -97,9 +138,9 @@ fun MainContent(modifier: Modifier, application: Application) {
 
         Button(
             onClick = {
-                val interval = intervalText.toLongOrNull() ?: 1000
-                val threshold = thresholdText.toLongOrNull() ?: 10000
-                val intent = Intent(context, SensorReader::class.java).apply {
+                val interval = intervalText.toLongOrNull() ?: intervalDefault
+                val threshold = thresholdText.toLongOrNull() ?: thresholdDefault
+                val intent = Intent(context, cls).apply {
                     action = "UPDATE_PARAMS"
                     putExtra("interval", interval)
                     putExtra("threshold", threshold)
@@ -113,8 +154,5 @@ fun MainContent(modifier: Modifier, application: Application) {
         Text(
             text = "${sensorValue}"
         )
-
-
     }
-
 }

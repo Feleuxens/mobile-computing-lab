@@ -185,13 +185,7 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.BLUETOOTH_CONNECT
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
+            println("Cannot connect to BLE device")
             return
         }
         gatt = device.connectGatt(this, false, object : BluetoothGattCallback() {
@@ -203,16 +197,12 @@ class MainActivity : ComponentActivity() {
                             Manifest.permission.BLUETOOTH_CONNECT
                         ) != PackageManager.PERMISSION_GRANTED
                     ) {
-                        // TODO: Consider calling
-                        //    ActivityCompat#requestPermissions
-                        // here to request the missing permissions, and then overriding
-                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                        //                                          int[] grantResults)
-                        // to handle the case where the user grants the permission. See the documentation
-                        // for ActivityCompat#requestPermissions for more details.
+                        println("Could not connect GATT")
                         return
                     }
                     gatt.discoverServices()
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    gatt.disconnect()
                 }
             }
 
@@ -221,16 +211,14 @@ class MainActivity : ComponentActivity() {
                 val tempChar = service?.getCharacteristic(TEMP_CHAR_UUID)
                 val humChar = service?.getCharacteristic(HUMIDITY_CHAR_UUID)
 
-                tempChar?.let {
-                    readAndSubscribe(gatt, it) { value ->
-                        temperature.value = parseTemperature(value)
-                    }
+                if (tempChar != null) {
+                    println("Get temperature service")
+                    readAndSubscribe(gatt, tempChar)
                 }
 
-                humChar?.let {
-                    readAndSubscribe(gatt, it) { value ->
-                        humidity.value = parseHumidity(value)
-                    }
+                if (humChar != null) {
+                    println("Get humidity service")
+                    readAndSubscribe(gatt, humChar)
                 }
             }
 
@@ -246,11 +234,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-                val value = characteristic.value
-                when (characteristic.uuid) {
-                    TEMP_CHAR_UUID -> temperature.value = parseTemperature(value)
-                    HUMIDITY_CHAR_UUID -> humidity.value = parseHumidity(value)
+                if (ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    return
                 }
+                gatt.readCharacteristic(characteristic)
+
             }
         })
     }
@@ -261,13 +253,8 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.BLUETOOTH_CONNECT
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            // TODO: Consider calling
-            //    ActivityCompat#requestPermissions
-            // here to request the missing permissions, and then overriding
-            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-            //                                          int[] grantResults)
-            // to handle the case where the user grants the permission. See the documentation
-            // for ActivityCompat#requestPermissions for more details.
+            // This shouldn't happen in any case
+            gatt = null
             return
         }
         gatt?.disconnect()
@@ -277,7 +264,6 @@ class MainActivity : ComponentActivity() {
     private fun readAndSubscribe(
         gatt: BluetoothGatt,
         characteristic: BluetoothGattCharacteristic,
-        onUpdate: (ByteArray) -> Unit
     ) {
         if (ActivityCompat.checkSelfPermission(
                 this,
@@ -289,6 +275,7 @@ class MainActivity : ComponentActivity() {
 
         // -> Your App should implement functions for querying (reading)
         gatt.readCharacteristic(characteristic)
+
         // -> and subscribing to notifications, i.e., update the values when new ones arrive
         gatt.setCharacteristicNotification(characteristic, true)
 
@@ -334,7 +321,7 @@ class MainActivity : ComponentActivity() {
             if (humRaw == 0xFFFF) {
                 return "value is not known"
             }
-            pre = "%.2 %%".format(humRaw / 100) + "%"
+            pre = "%.2f %%".format(humRaw.toFloat() / 100.0f)
         }
         return pre + " " + " ByteArray: " + data.joinToString(" ") { "%02X".format(it) }
     }

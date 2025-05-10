@@ -15,6 +15,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -38,6 +39,10 @@ import java.util.UUID
 import kotlin.math.pow
 import java.nio.ByteOrder
 import android.provider.Settings
+import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
+import java.util.LinkedList
+import java.util.Queue
 
 private val WEATHER_SERVICE_UUID = UUID.fromString("00000002-0000-0000-FDFD-FDFDFDFDFDFD")
 private val TEMP_CHAR_UUID = UUID.fromString("00002A1C-0000-1000-8000-00805f9b34fb")
@@ -235,6 +240,7 @@ class MainActivity : ComponentActivity() {
 
 
     private var gatt: BluetoothGatt? = null
+    private var bleCommandQueue:BLECommandQueue? = null
 
     private fun connectToDevice(
         device: BluetoothDevice,
@@ -273,14 +279,21 @@ class MainActivity : ComponentActivity() {
                 val tempChar = service?.getCharacteristic(TEMP_CHAR_UUID)
                 val humChar = service?.getCharacteristic(HUMIDITY_CHAR_UUID)
 
+
                 if (tempChar != null) {
+                    bleCommandQueue!!.add(ReadCharacteristicCommand(tempChar))
+                    bleCommandQueue!!.add(EnableNotificationCommand(tempChar))
+                    bleCommandQueue!!.add(WriteNotificationDescriptorCommand(tempChar, true))
+
                     Log.i("Service", "Get temperature service")
-                    readAndSubscribe(gatt, tempChar)
                 }
 
                 if (humChar != null) {
+                    bleCommandQueue!!.add(ReadCharacteristicCommand(humChar))
+                    bleCommandQueue!!.add(EnableNotificationCommand(humChar))
+                    bleCommandQueue!!.add(WriteNotificationDescriptorCommand(humChar, true))
+
                     Log.i("service", "Get humidity service")
-                    readAndSubscribe(gatt, humChar)
                 }
             }
 
@@ -290,22 +303,37 @@ class MainActivity : ComponentActivity() {
                 value: ByteArray,
                 status: Int
             ) {
+                Log.i("characteristic", "Status: " + status + " " + characteristic.uuid.toString())
                 when (characteristic.uuid) {
                     TEMP_CHAR_UUID -> temperature.value = parseTemperature(value)
                     HUMIDITY_CHAR_UUID -> humidity.value = parseHumidity(value)
                 }
+
+                bleCommandQueue!!.onOperationComplete()
             }
+
             override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-                if (ActivityCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.BLUETOOTH_CONNECT
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    return
+                when (characteristic.uuid) {
+                    TEMP_CHAR_UUID -> temperature.value = parseTemperature(characteristic.value)
+                    HUMIDITY_CHAR_UUID -> humidity.value = parseHumidity(characteristic.value)
                 }
-                gatt.readCharacteristic(characteristic)
+
+                bleCommandQueue!!.onOperationComplete()
             }
+
+            override fun onDescriptorWrite(
+                gatt: BluetoothGatt?,
+                descriptor: BluetoothGattDescriptor?,
+                status: Int
+            ) {
+                super.onDescriptorWrite(gatt, descriptor, status)
+
+                bleCommandQueue!!.onOperationComplete()
+            }
+
         })
+
+        bleCommandQueue = BLECommandQueue(gatt!!)
     }
 
     private fun disconnectFromDevice() {
@@ -322,89 +350,41 @@ class MainActivity : ComponentActivity() {
         gatt?.close()
         gatt = null
     }
-    private fun readAndSubscribe(
-        gatt: BluetoothGatt,
-        characteristic: BluetoothGattCharacteristic,
-    ) {
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
 
-        // -> Your App should implement functions for querying (reading)
-        gatt.readCharacteristic(characteristic)
 
-        // -> and subscribing to notifications, i.e., update the values when new ones arrive
-        gatt.setCharacteristicNotification(characteristic, true)
 
-        val descriptor = characteristic.getDescriptor(CLIENT_CHARACTERISTIC_CONFIGURATION)
-        descriptor?.let {
-            it.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-            gatt.writeDescriptor(it)
-        }
-    }
-
-    // Parsing of: 3.208 Temperature Measurement
+    /// Parsing of: 3.208 Temperature Measurement
     fun parseTemperature(data: ByteArray?): String {
         if (data == null) {
-            throw IllegalArgumentException("Input data cannot be null")
-        }
-        if (data.size < 2) {
-            println("Error: Input data too short. Must be at least 2 bytes.")
-            return "Invalid Data" // Handle the case where the data is too short.
+            return "No data received"
         }
 
-        val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        val flags = data[0].toInt() and 0xFF
 
-        val flags = buffer.get().toInt()
+        val unitIsFahrenheit = flags and 0x01 != 0
 
-        // Determine the format of the temperature value (SFloat or Float)
-        val isFloat = (flags and 0x01) != 0 // Check the first bit of flags
+        var index = 1
 
-        val temperature: Float = if (isFloat) {
-            if (data.size < 5) { //check size
-                println("Error: Input data too short for Float temperature.  Must be at least 5 bytes.")
-                return "Input data too short for Float temperature"
-            }
-            buffer.float
-        } else {
-            if (data.size < 3) { //check size
-                println("Error: Input data too short for SFloat temperature.  Must be at least 3 bytes.")
-                return "Input data too short for SFloat temperature"
-            }
-            //SFloat (16-bit float)
-            val sfloatValue = buffer.short.toInt() // Ensure unsigned short
-            convertSFloatToFloat(sfloatValue)
-        }
+        // IEEE-11073 FLOAT = 32 bits (mantissa + exponent)
+        val tempRaw = ByteBuffer.wrap(data, index, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        val temperature = ieee11073ToFloat(tempRaw)
+        index += 4
 
-        return "%.2f °C".format(temperature) + " " + " ByteArray: " + data.joinToString(" ") {
-            "%02X".format(
-                it
-            )
-        }
+        val  unit = if (unitIsFahrenheit) "°F" else "°C"
+        return "%.2f %s".format(temperature, unit)
     }
 
-    /**
-     * Converts a 16-bit SFloat value to a Float.  SFloat is a 16-bit
-     * representation with a 1-bit sign, 7-bit exponent, and 8-bit mantissa.
-     */
-    private fun convertSFloatToFloat(sfloatValue: Int): Float {
-        val sign = if ((sfloatValue and 0x8000) != 0) -1 else 1
-        val exponent = (sfloatValue shr 8) and 0x7F //bits 8-14
-        val mantissa = sfloatValue and 0xFF // bits 0-7
-
-        val floatMantissa: Float = mantissa.toFloat() / 256.0f // 2^8 = 256
-        val floatExponent: Float = 10f.pow(exponent - 61) // Bias of 61 for SFloat
-
-        return sign * floatMantissa * floatExponent
+    // Convert IEEE-11073 FLOAT to native float
+    fun ieee11073ToFloat(raw: Int): Float {
+        val mantissa = raw and 0x00FFFFFF
+        val exponent = (raw shr 24).toByte().toInt()
+        return (if (mantissa and 0x00800000 != 0) mantissa or -0x1000000 else mantissa).toFloat() * Math.pow(10.0, exponent.toDouble()).toFloat()
     }
+
+
 
     // Parsing of: 3.114 Humidity
     fun parseHumidity(data: ByteArray?): String {
-        Log.i("humidity", "hey")
         if (data == null || data.isEmpty()) {
             Log.e("HumidityParser", "Data is null or empty")
             return "No data"
@@ -415,7 +395,76 @@ class MainActivity : ComponentActivity() {
             return "Not enough data"
         }
 
-        val humidityValue = (data[1].toInt() and 0xFF) or ((data[2].toInt() and 0xFF) shl 8)
+        val humidityValue = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
         return "%.2f %%".format(humidityValue / 100.0f)
     }
 }
+
+interface BLECommand {
+    fun execute(gatt: BluetoothGatt): Boolean
+}
+
+class ReadCharacteristicCommand(private val characteristic: BluetoothGattCharacteristic) : BLECommand{
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun execute(gatt: BluetoothGatt): Boolean {
+        Log.i("queue", "Read characteristic " + characteristic.uuid.toString())
+        return gatt.readCharacteristic(characteristic)
+    }
+}
+
+class EnableNotificationCommand(private val characteristic: BluetoothGattCharacteristic) : BLECommand {
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun execute(gatt: BluetoothGatt): Boolean {
+        Log.i("queue", "Set Local Notification for characteristic " + characteristic.uuid.toString())
+        gatt.setCharacteristicNotification(characteristic, true)
+        return false
+    }
+}
+
+class WriteNotificationDescriptorCommand(
+    private val characteristic: BluetoothGattCharacteristic,
+    private val enable: Boolean
+) : BLECommand {
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    override fun execute(gatt: BluetoothGatt): Boolean {
+        Log.i("queue", "Write Descriptor for characteristic " + characteristic.uuid.toString())
+        val descriptor = characteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
+        if (enable)
+            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+        else
+            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
+
+        return true
+    }
+}
+
+
+class BLECommandQueue(private val gatt: BluetoothGatt) {
+    private val queue: Queue<BLECommand> = LinkedList()
+    private var busy = false
+
+    fun add(command: BLECommand) {
+        queue.offer(command)
+        processNext()
+    }
+
+    private fun processNext() {
+        if (busy) return
+        val command = queue.poll()
+        if (command != null) {
+            busy = command.execute(gatt)
+            if (!busy) {
+                processNext()
+            }
+        }
+
+    }
+
+    fun onOperationComplete() {
+        busy = false
+        processNext()
+    }
+}
+

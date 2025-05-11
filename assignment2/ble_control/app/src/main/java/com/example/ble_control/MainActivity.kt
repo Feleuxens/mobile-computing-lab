@@ -40,11 +40,10 @@ import kotlin.math.pow
 import java.nio.ByteOrder
 import android.provider.Settings
 import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresPermission
 
 private val LIGHT_SERVICE_UUID = UUID.fromString("00000001-0000-0000-FDFD-FDFDFDFDFDFD")
 private val INTENSITY_CHAR_UUID = UUID.fromString("10000001-0000-0000-FDFD-FDFDFDFDFDFD")
-
-
 
 
 class MainActivity : ComponentActivity() {
@@ -115,7 +114,7 @@ class MainActivity : ComponentActivity() {
 
             bluetoothLocationActive = remember { mutableStateOf(bluetoothAdapter.isEnabled and locationManager.isLocationEnabled) }
             val selectedDevice = remember { mutableStateOf<BluetoothDevice?>(null) }
-            val intensity = remember { mutableStateOf(0) }
+            val intensity = remember { mutableIntStateOf(0) }
 
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -136,13 +135,6 @@ class MainActivity : ComponentActivity() {
                                             Manifest.permission.BLUETOOTH_CONNECT
                                         ) != PackageManager.PERMISSION_GRANTED
                                     ) {
-                                        // TODO: Consider calling
-                                        //    ActivityCompat#requestPermissions
-                                        // here to request the missing permissions, and then overriding
-                                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                                        //                                          int[] grantResults)
-                                        // to handle the case where the user grants the permission. See the documentation
-                                        // for ActivityCompat#requestPermissions for more details.
                                         return@items
                                     }
 
@@ -163,17 +155,21 @@ class MainActivity : ComponentActivity() {
                         // connected to wheater sensor => show data
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("Connected to: ${selectedDevice.value?.name}")
-                            Text("Intensity: ${intensity.value}")
+                            Text("Intensity: ${intensity.intValue}")
                             Slider(
-                                value = intensity.value.toFloat(),
-                                onValueChange = { intensity.value = it.toInt() },
+                                value = intensity.intValue.toFloat(),
+                                onValueChange = { intensity.intValue = it.toInt() },
                                 valueRange = 0f..65535f,
                                 steps = 10
                             )
 
                             Spacer(Modifier.height(16.dp))
                             Button(onClick = {
-                                setIntensity(intensity.value)
+                                if (intensityCharacteristic != null) {
+                                    bleCommandQueue!!.add(WriteCharacteristicCommand(
+                                        intensityCharacteristic!!, intensity.intValue
+                                    ))
+                                }
                             }) {
                                 Text("Set Intensity")
                             }
@@ -199,13 +195,6 @@ class MainActivity : ComponentActivity() {
                         Manifest.permission.BLUETOOTH_CONNECT
                     ) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    // TODO: Consider calling
-                    //    ActivityCompat#requestPermissions
-                    // here to request the missing permissions, and then overriding
-                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                    //                                          int[] grantResults)
-                    // to handle the case where the user grants the permission. See the documentation
-                    // for ActivityCompat#requestPermissions for more details.
                     return
                 }
                 // if (!deviceList.any { it.address == device.address } && device.name != null) {
@@ -244,6 +233,8 @@ class MainActivity : ComponentActivity() {
 
 
     private var gatt: BluetoothGatt? = null
+    private var bleCommandQueue: BLECommandQueue? = null
+    private var intensityCharacteristic: BluetoothGattCharacteristic? = null
 
     private fun connectToDevice(
         device: BluetoothDevice,
@@ -278,6 +269,7 @@ class MainActivity : ComponentActivity() {
             override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
                 val service = gatt.getService(LIGHT_SERVICE_UUID)
                 val intensityChar = service?.getCharacteristic(INTENSITY_CHAR_UUID)
+                intensityCharacteristic = intensityChar
 
                 if(intensityChar != null) {
                     runOnUiThread {
@@ -293,12 +285,16 @@ class MainActivity : ComponentActivity() {
             ) {
                 println("Write status: $status")
                 if (status == BluetoothGatt.GATT_SUCCESS) {
-                    println("Write successful: ${characteristic.value.joinToString(" ") { "%02X".format(it) }}")
+                    println("Write successful")
                 } else {
                     println("Write failed with status $status")
                 }
+
+                bleCommandQueue!!.onOperationComplete()
             }
         })
+
+        bleCommandQueue = BLECommandQueue(gatt!!)
     }
 
     private fun disconnectFromDevice() {
@@ -314,30 +310,5 @@ class MainActivity : ComponentActivity() {
         gatt?.disconnect()
         gatt?.close()
         gatt = null
-    }
-
-    private fun setIntensity(value: Int) {
-        val gatt = gatt ?: return
-        val service = gatt.getService(LIGHT_SERVICE_UUID) ?: return
-        val characteristic = service.getCharacteristic(INTENSITY_CHAR_UUID) ?: return
-
-        val data = byteArrayOf(
-            (value and 0xFF).toByte(),
-            ((value shr 8) and 0xFF).toByte()
-        )
-        characteristic.value = data
-        characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-
-        println("Writing intensity value: "+ data.joinToString(" ") { "%02X".format(it) })
-
-        if (ActivityCompat.checkSelfPermission(
-                this,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-        println("Successfully sent")
-        gatt.writeCharacteristic(characteristic)
     }
 }

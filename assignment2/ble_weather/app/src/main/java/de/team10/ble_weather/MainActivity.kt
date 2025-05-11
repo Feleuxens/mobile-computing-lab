@@ -1,7 +1,6 @@
 package de.team10.ble_weather
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
@@ -15,7 +14,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
-import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -31,25 +29,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import java.nio.ByteBuffer
 import java.util.UUID
-import kotlin.math.pow
 import java.nio.ByteOrder
 import android.provider.Settings
-import androidx.annotation.RequiresApi
-import androidx.annotation.RequiresPermission
-import java.util.LinkedList
-import java.util.Queue
 
 private val WEATHER_SERVICE_UUID = UUID.fromString("00000002-0000-0000-FDFD-FDFDFDFDFDFD")
 private val TEMP_CHAR_UUID = UUID.fromString("00002A1C-0000-1000-8000-00805f9b34fb")
 private val HUMIDITY_CHAR_UUID = UUID.fromString("00002A6F-0000-1000-8000-00805f9b34fb")
-private val CLIENT_CHARACTERISTIC_CONFIGURATION = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
-
-
 
 class MainActivity : ComponentActivity() {
 
@@ -79,7 +68,8 @@ class MainActivity : ComponentActivity() {
 
         } else {
             // User denied Bluetooth enabling
-            Toast.makeText(this, "Please enable bluetooth/GPS to continue", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Please enable bluetooth/GPS to continue", Toast.LENGTH_SHORT)
+                .show()
         }
     }
 
@@ -89,7 +79,8 @@ class MainActivity : ComponentActivity() {
 
         handler.post(object : Runnable {
             override fun run() {
-                bluetoothLocationActive.value = bluetoothAdapter.isEnabled and locationManager.isLocationEnabled
+                bluetoothLocationActive.value =
+                    bluetoothAdapter.isEnabled and locationManager.isLocationEnabled
                 handler.postDelayed(this, 1000)
             }
         })
@@ -116,7 +107,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
 
-            bluetoothLocationActive = remember { mutableStateOf(bluetoothAdapter.isEnabled and locationManager.isLocationEnabled) }
+            bluetoothLocationActive =
+                remember { mutableStateOf(bluetoothAdapter.isEnabled and locationManager.isLocationEnabled) }
             val selectedDevice = remember { mutableStateOf<BluetoothDevice?>(null) }
             val temperature = remember { mutableStateOf("N/A") }
             val humidity = remember { mutableStateOf("N/A") }
@@ -140,13 +132,6 @@ class MainActivity : ComponentActivity() {
                                             Manifest.permission.BLUETOOTH_CONNECT
                                         ) != PackageManager.PERMISSION_GRANTED
                                     ) {
-                                        // TODO: Consider calling
-                                        //    ActivityCompat#requestPermissions
-                                        // here to request the missing permissions, and then overriding
-                                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                                        //                                          int[] grantResults)
-                                        // to handle the case where the user grants the permission. See the documentation
-                                        // for ActivityCompat#requestPermissions for more details.
                                         return@items
                                     }
 
@@ -195,13 +180,6 @@ class MainActivity : ComponentActivity() {
                         Manifest.permission.BLUETOOTH_CONNECT
                     ) != PackageManager.PERMISSION_GRANTED
                 ) {
-                    // TODO: Consider calling
-                    //    ActivityCompat#requestPermissions
-                    // here to request the missing permissions, and then overriding
-                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
-                    //                                          int[] grantResults)
-                    // to handle the case where the user grants the permission. See the documentation
-                    // for ActivityCompat#requestPermissions for more details.
                     return
                 }
                 // if (!deviceList.any { it.address == device.address } && device.name != null) {
@@ -224,7 +202,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startScan() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
             Log.i("scanner", "Missing permissions!")
             return
         }
@@ -238,9 +220,8 @@ class MainActivity : ComponentActivity() {
     }
 
 
-
     private var gatt: BluetoothGatt? = null
-    private var bleCommandQueue:BLECommandQueue? = null
+    private var bleCommandQueue: BLECommandQueue? = null
 
     private fun connectToDevice(
         device: BluetoothDevice,
@@ -312,7 +293,10 @@ class MainActivity : ComponentActivity() {
                 bleCommandQueue!!.onOperationComplete()
             }
 
-            override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic
+            ) {
                 when (characteristic.uuid) {
                     TEMP_CHAR_UUID -> temperature.value = parseTemperature(characteristic.value)
                     HUMIDITY_CHAR_UUID -> humidity.value = parseHumidity(characteristic.value)
@@ -342,7 +326,7 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.BLUETOOTH_CONNECT
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            // This shouldn't happen in any case
+            // This shouldn't happen since we couldn't have connected in the first place
             gatt = null
             return
         }
@@ -350,7 +334,6 @@ class MainActivity : ComponentActivity() {
         gatt?.close()
         gatt = null
     }
-
 
 
     /// Parsing of: 3.208 Temperature Measurement
@@ -370,7 +353,7 @@ class MainActivity : ComponentActivity() {
         val temperature = ieee11073ToFloat(tempRaw)
         index += 4
 
-        val  unit = if (unitIsFahrenheit) "°F" else "°C"
+        val unit = if (unitIsFahrenheit) "°F" else "°C"
         return "%.2f %s".format(temperature, unit)
     }
 
@@ -378,9 +361,11 @@ class MainActivity : ComponentActivity() {
     fun ieee11073ToFloat(raw: Int): Float {
         val mantissa = raw and 0x00FFFFFF
         val exponent = (raw shr 24).toByte().toInt()
-        return (if (mantissa and 0x00800000 != 0) mantissa or -0x1000000 else mantissa).toFloat() * Math.pow(10.0, exponent.toDouble()).toFloat()
+        return (if (mantissa and 0x00800000 != 0) mantissa or -0x1000000 else mantissa).toFloat() * Math.pow(
+            10.0,
+            exponent.toDouble()
+        ).toFloat()
     }
-
 
 
     // Parsing of: 3.114 Humidity
@@ -397,74 +382,6 @@ class MainActivity : ComponentActivity() {
 
         val humidityValue = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
         return "%.2f %%".format(humidityValue / 100.0f)
-    }
-}
-
-interface BLECommand {
-    fun execute(gatt: BluetoothGatt): Boolean
-}
-
-class ReadCharacteristicCommand(private val characteristic: BluetoothGattCharacteristic) : BLECommand{
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    override fun execute(gatt: BluetoothGatt): Boolean {
-        Log.i("queue", "Read characteristic " + characteristic.uuid.toString())
-        return gatt.readCharacteristic(characteristic)
-    }
-}
-
-class EnableNotificationCommand(private val characteristic: BluetoothGattCharacteristic) : BLECommand {
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    override fun execute(gatt: BluetoothGatt): Boolean {
-        Log.i("queue", "Set Local Notification for characteristic " + characteristic.uuid.toString())
-        gatt.setCharacteristicNotification(characteristic, true)
-        return false
-    }
-}
-
-class WriteNotificationDescriptorCommand(
-    private val characteristic: BluetoothGattCharacteristic,
-    private val enable: Boolean
-) : BLECommand {
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
-    override fun execute(gatt: BluetoothGatt): Boolean {
-        Log.i("queue", "Write Descriptor for characteristic " + characteristic.uuid.toString())
-        val descriptor = characteristic.getDescriptor(UUID.fromString("00002902-0000-1000-8000-00805f9b34fb"))
-        if (enable)
-            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
-        else
-            gatt.writeDescriptor(descriptor, BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE)
-
-        return true
-    }
-}
-
-
-class BLECommandQueue(private val gatt: BluetoothGatt) {
-    private val queue: Queue<BLECommand> = LinkedList()
-    private var busy = false
-
-    fun add(command: BLECommand) {
-        queue.offer(command)
-        processNext()
-    }
-
-    private fun processNext() {
-        if (busy) return
-        val command = queue.poll()
-        if (command != null) {
-            busy = command.execute(gatt)
-            if (!busy) {
-                processNext()
-            }
-        }
-
-    }
-
-    fun onOperationComplete() {
-        busy = false
-        processNext()
     }
 }
 

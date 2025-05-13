@@ -363,12 +363,9 @@ class MainActivity : ComponentActivity() {
 
         val unitIsFahrenheit = flags and 0x01 != 0
 
-        var index = 1
-
         // IEEE-11073 FLOAT = 32 bits (mantissa + exponent)
-        val tempRaw = ByteBuffer.wrap(data, index, 4).order(ByteOrder.LITTLE_ENDIAN).int
+        val tempRaw = ByteBuffer.wrap(data, 1, 4).order(ByteOrder.LITTLE_ENDIAN).int
         val temperature = ieee11073ToFloat(tempRaw)
-        index += 4
 
         val unit = if (unitIsFahrenheit) "°F" else "°C"
         return "%.2f %s".format(temperature, unit)

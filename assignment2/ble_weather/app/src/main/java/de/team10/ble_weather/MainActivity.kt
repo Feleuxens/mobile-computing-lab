@@ -49,12 +49,20 @@ class MainActivity : ComponentActivity() {
     private lateinit var scanCallback: ScanCallback
     private lateinit var locationManager: LocationManager
     private var bluetoothLocationActive: MutableState<Boolean> = mutableStateOf(false)
+    private var permissions = false
 
     private val permissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
         val granted = perms.values.all { it }
-        if (granted) startScan() else {
+        if (granted) {
+            if (!bluetoothAdapter.isEnabled) {
+                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                activationLauncher.launch(enableBtIntent)
+            }
+            permissions = true
+        } else {
+            permissions = false
             Toast.makeText(this, "Bluetooth permissions required", Toast.LENGTH_SHORT).show()
         }
     }
@@ -91,10 +99,13 @@ class MainActivity : ComponentActivity() {
             context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         bluetoothAdapter = bluetoothManager.adapter
 
-        if (!bluetoothAdapter.isEnabled) {
-            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-            activationLauncher.launch(enableBtIntent)
-        }
+        permissionsLauncher.launch(
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        )
 
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         if (!locationManager.isLocationEnabled) {
@@ -203,6 +214,8 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.ACCESS_FINE_LOCATION
             )
         )
+
+        if (permissions) startScan()
     }
 
     private fun startScan() {

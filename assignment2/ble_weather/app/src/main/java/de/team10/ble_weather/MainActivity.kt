@@ -135,6 +135,10 @@ class MainActivity : ComponentActivity() {
                                         return@items
                                     }
 
+                                    if (device.name == null) {
+                                        return@items
+                                    }
+
                                     Text(
                                         "${device.name} - ${device.address}",
                                         modifier = Modifier

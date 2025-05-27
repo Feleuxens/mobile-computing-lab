@@ -1,47 +1,61 @@
 package de.team10.eddystonebeacon
 
+import android.os.Build
 import android.os.Bundle
+import android.Manifest
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.annotation.RequiresPermission
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import de.team10.eddystonebeacon.ui.theme.EddystoneBeaconTheme
+import androidx.core.app.ActivityCompat
+import de.team10.eddystonebeacon.ble.EddystoneScanner
+import de.team10.eddystonebeacon.model.BeaconViewModel
+import de.team10.eddystonebeacon.ui.BeaconScreen
 
 class MainActivity : ComponentActivity() {
+    private lateinit var scanner: EddystoneScanner
+    private val viewModel: BeaconViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+
+        askPermissions()
+
+        scanner = EddystoneScanner(this, viewModel)
+
         setContent {
-            EddystoneBeaconTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
+            MaterialTheme {
+                BeaconScreen(viewModel = viewModel)
             }
         }
     }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+    override fun onResume() {
+        super.onResume()
+        scanner.startScanning()
+    }
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    EddystoneBeaconTheme {
-        Greeting("Android")
+    @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN)
+    override fun onPause() {
+        super.onPause()
+        scanner.stopScanning()
+    }
+
+    private fun askPermissions() {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissions += Manifest.permission.BLUETOOTH_SCAN
+            permissions += Manifest.permission.BLUETOOTH_CONNECT
+        }
+        permissions += Manifest.permission.ACCESS_FINE_LOCATION
+
+        ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 101)
     }
 }

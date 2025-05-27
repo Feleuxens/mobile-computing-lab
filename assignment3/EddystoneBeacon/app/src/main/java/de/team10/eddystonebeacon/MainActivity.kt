@@ -3,6 +3,7 @@ package de.team10.eddystonebeacon
 import android.os.Build
 import android.os.Bundle
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -17,6 +18,7 @@ import androidx.core.app.ActivityCompat
 import de.team10.eddystonebeacon.ble.EddystoneScanner
 import de.team10.eddystonebeacon.model.BeaconViewModel
 import de.team10.eddystonebeacon.ui.BeaconScreen
+import de.team10.eddystonebeacon.ui.PermissionRequest
 
 class MainActivity : ComponentActivity() {
     private lateinit var scanner: EddystoneScanner
@@ -31,20 +33,44 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme {
+                PermissionRequest {
+                    if (ActivityCompat.checkSelfPermission(
+                            this,
+                            Manifest.permission.BLUETOOTH_SCAN
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        scanner.startScanning()
+                    }
+                }
+
                 BeaconScreen(viewModel = viewModel)
             }
         }
     }
 
-    @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN)
     override fun onResume() {
         super.onResume()
+
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         scanner.startScanning()
     }
 
-    @RequiresPermission(android.Manifest.permission.BLUETOOTH_SCAN)
     override fun onPause() {
         super.onPause()
+
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
         scanner.stopScanning()
     }
 

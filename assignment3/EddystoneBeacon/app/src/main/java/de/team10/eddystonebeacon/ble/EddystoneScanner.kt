@@ -192,9 +192,10 @@ class EddystoneScanner(
 
     private fun estimateDistance(txPower: Int, rssi: Int): Double {
         val pathLossExponent = 3
-        val distance = 10.0.pow((txPower - rssi) / (10.0 * pathLossExponent))
+        val txPowerAt1 = txPower - 6
+        val distance = 10.0.pow((txPowerAt1 - rssi) / (10.0 * pathLossExponent))
 
-        Log.i("scanner", "estimated distance: $distance from txPower: $txPower rssi: $rssi")
+        Log.i("scanner", "estimated distance: $distance from txPowerAt1: $txPowerAt1 rssi: $rssi")
 
         return distance
     }

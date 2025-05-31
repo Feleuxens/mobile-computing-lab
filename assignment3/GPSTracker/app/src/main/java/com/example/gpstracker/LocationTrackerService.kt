@@ -36,7 +36,6 @@ class LocationTrackingService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
-    private var startLocation: Location? = null
     private var currentLocation: Location? = null
     private var distance: Double = 0.0
     private var totalTime: Long = 0
@@ -60,15 +59,13 @@ class LocationTrackingService : Service() {
                 super.onLocationResult(locationResult)
                 Log.i("Service", "Location updated!")
                 for (location in locationResult.locations) {
-                    if (startLocation == null) {
-                        startLocation = location
+                    if (currentLocation == null) {
+                        currentLocation = location
                     }
 
                     // Calculate distance and time
-
+                    distance += location.distanceTo(currentLocation!!).toDouble()
                     currentLocation = location
-                    Log.i("calculation", startLocation.toString())
-                    distance = location.distanceTo(startLocation!!).toDouble()
                     numUpdates++
                     totalTime += 1000 // Placeholder for actual time difference logic
 
@@ -86,7 +83,10 @@ class LocationTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("Service", "Start command received!")
         // Create LocationRequest using the builder with default configuration
-        val locationRequest: LocationRequest = LocationRequest.Builder(1000).setPriority(Priority.PRIORITY_HIGH_ACCURACY).build()
+        val locationRequest: LocationRequest = LocationRequest.Builder(200)
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setMinUpdateDistanceMeters(10f)
+            .build()
 
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
         return START_STICKY

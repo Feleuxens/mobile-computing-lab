@@ -24,6 +24,7 @@ import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 class LocationTrackingService : Service() {
 
@@ -66,7 +67,8 @@ class LocationTrackingService : Service() {
                     // Calculate distance and time
 
                     currentLocation = location
-                    distance += location.distanceTo(startLocation!!).toDouble()
+                    Log.i("calculation", startLocation.toString())
+                    distance = location.distanceTo(startLocation!!).toDouble()
                     numUpdates++
                     totalTime += 1000 // Placeholder for actual time difference logic
 
@@ -84,7 +86,7 @@ class LocationTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("Service", "Start command received!")
         // Create LocationRequest using the builder with default configuration
-        val locationRequest: LocationRequest = LocationRequest.Builder(1000).build()
+        val locationRequest: LocationRequest = LocationRequest.Builder(1000).setPriority(Priority.PRIORITY_HIGH_ACCURACY).build()
 
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
         return START_STICKY

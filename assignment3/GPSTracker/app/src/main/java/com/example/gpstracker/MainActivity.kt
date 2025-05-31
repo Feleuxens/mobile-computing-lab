@@ -42,9 +42,9 @@ class MainActivity : ComponentActivity() {
 
     private val handler: Handler = Handler(Looper.getMainLooper())
 
-    private var locationTrackingService: LocationTrackingService? = null
-    private var isBound = false
-    private var permissions = false
+    private var locationTrackingService:LocationTrackingService? by mutableStateOf(null)
+    private var isBound by mutableStateOf(false)
+    private var permissions by mutableStateOf(false)
 
     // State variables for UI updates
     private var latitude by mutableStateOf(0.0)
@@ -67,9 +67,13 @@ class MainActivity : ComponentActivity() {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             Log.i("MainActivity", "Connected to service!")
-            val binder = service as LocationTrackingService.LocalBinder
-            locationTrackingService = binder.getService()
+            val binder = service as? LocationTrackingService.LocalBinder
+            if (binder == null) {
+                Log.i("MainActivity", "Failed binder")
+            }
+            locationTrackingService = binder?.getService()
             isBound = true
+
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
@@ -89,6 +93,7 @@ class MainActivity : ComponentActivity() {
                     longitude = longitude,
                     distance = distance,
                     speed = speed,
+                    isBound = isBound,
                     onStartStopClick = { onStartStopClick() }
                 )
             }
@@ -163,11 +168,28 @@ class MainActivity : ComponentActivity() {
     // Update the UI with data from the service
     private fun updateData() {
         locationTrackingService?.let {
-            Log.i("MainActivity", "updating data")
-            latitude = it.latitude
-            longitude = it.longitude
-            distance = it.distanceTravelled
-            speed = it.averageSpeed
+            var updated = false
+            if (latitude != it.latitude) {
+                latitude = it.latitude
+                updated = true
+            }
+            if (longitude != it.longitude) {
+                longitude = it.longitude
+                updated = true
+            }
+            if (distance != it.distanceTravelled) {
+                distance = it.distanceTravelled
+                updated = true
+            }
+            if (speed != it.averageSpeed) {
+                speed = it.averageSpeed
+                updated = false
+            }
+
+            if (updated) {
+                Log.i("UI", "Update now visible")
+
+            }
         }
     }
 }
@@ -179,6 +201,7 @@ fun LocationTrackingUI(
     longitude: Double,
     distance: Double,
     speed: Double,
+    isBound: Boolean,
     onStartStopClick: () -> Unit
 ) {
     // Material Theme and UI Layout
@@ -210,7 +233,7 @@ fun LocationTrackingUI(
             onClick = onStartStopClick,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (distance == 0.0) "Start Tracking" else "Stop Tracking")
+            Text(if (!isBound) "Start Tracking" else "Stop Tracking")
         }
     }
 }
@@ -224,6 +247,7 @@ fun DefaultPreview() {
             longitude = 0.0,
             distance = 0.0,
             speed = 0.0,
+            isBound = false,
             onStartStopClick = {}
         )
     }

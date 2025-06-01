@@ -1,7 +1,6 @@
 package com.example.gpstracker
 
 import android.Manifest
-import android.R
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -12,13 +11,11 @@ import android.location.Location
 import android.net.Uri
 import android.os.Binder
 import android.os.Build
-import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationAvailability
 import com.google.android.gms.location.LocationCallback
@@ -27,10 +24,14 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import androidx.core.net.toUri
+import java.util.Locale
+import androidx.core.content.edit
 
 class LocationTrackingService : Service() {
     companion object {
         private const val CHANNEL_ID = "LocationTrackingChannel"
+        const val PREFERENCE = "tracking"
+        const val RUNNING = "running"
         const val FILE_URI = "file_uri"
     }
 
@@ -38,16 +39,15 @@ class LocationTrackingService : Service() {
         fun getService(): LocationTrackingService = this@LocationTrackingService
     }
 
-    val binder: IBinder = LocalBinder()
+    private val binder: IBinder = LocalBinder()
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
-    private lateinit var ouput_uri: Uri
+    private lateinit var outputUri: Uri
 
     private var lastWrite = 0
     private val locationBuffer = mutableListOf<Location>()
 
-    private var currentLocation: Location? = null
     private var distance: Double = 0.0
     private var totalTime: Long = 0
     private var numUpdates = 0
@@ -55,8 +55,6 @@ class LocationTrackingService : Service() {
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     override fun onCreate() {
         super.onCreate()
-
-
 
         Log.i("Service", "Service started!")
 
@@ -72,13 +70,14 @@ class LocationTrackingService : Service() {
                 super.onLocationResult(locationResult)
                 Log.i("Service", "Location updated!")
                 for (location in locationResult.locations) {
-                    if (currentLocation == null) {
-                        currentLocation = location
-                    }
 
                     // Calculate distance and time
-                    distance += location.distanceTo(currentLocation!!).toDouble()
-                    currentLocation = location
+                    distance = if (locationBuffer.size > 0) {
+                        location.distanceTo(locationBuffer[0]).toDouble()
+                    } else {
+                        0.0
+                    }
+
                     numUpdates++
                     totalTime += 1000 // Placeholder for actual time difference logic
 
@@ -89,8 +88,6 @@ class LocationTrackingService : Service() {
                         lastWrite = locationBuffer.size
                         writeGPXFile()
                     }
-
-
 
                     // Send the notification with current distance
                     sendNotification()
@@ -103,14 +100,14 @@ class LocationTrackingService : Service() {
     }
 
     fun writeGPXFile() {
-        Log.i("Writer", "Try writing gpxfile")
+        Log.i("Writer", "Try writing GPXfile")
 
         if (locationBuffer.isEmpty()) return
 
         val gpxContent = buildGpx(locationBuffer)
 
         try {
-            contentResolver.openOutputStream(ouput_uri, "wt")?.use { outputStream ->
+            contentResolver.openOutputStream(outputUri, "wt")?.use { outputStream ->
                 outputStream.write(gpxContent.toByteArray())
                 outputStream.flush()
             }
@@ -119,17 +116,17 @@ class LocationTrackingService : Service() {
         }
     }
 
-    fun buildGpx(locationBuffer: MutableList<Location>): String {
+    private fun buildGpx(locationBuffer: MutableList<Location>): String {
         return buildString {
             appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
             appendLine("""<gpx version="1.1" creator="YourApp" xmlns="http://www.topografix.com/GPX/1/1">""")
-            appendLine("""<metadata>
-  <name>track.gpx</name>
-  <desc>Mobile Computing Assigment</desc>
-  <author>
-   <name>Team10</name>
-  </author>
- </metadata>""")
+            appendLine("<metadata>")
+            appendLine("  <name>track.gpx</name>")
+            appendLine("  <desc>Mobile Computing Assignment</desc>")
+            appendLine("  <author>")
+            appendLine("    <name>Team10</name>")
+            appendLine("  </author>")
+            appendLine("</metadata>")
             appendLine("<trk>")
             appendLine("  <name>Track</name>")
             appendLine("  <trkseg>")
@@ -152,7 +149,8 @@ class LocationTrackingService : Service() {
             // .setMinUpdateDistanceMeters(10f)
             .build()
 
-        ouput_uri = intent?.getStringExtra(FILE_URI)!!.toUri()
+        getSharedPreferences(PREFERENCE, MODE_PRIVATE).edit() { putBoolean(RUNNING, true) }
+        outputUri = intent?.getStringExtra(FILE_URI)!!.toUri()
 
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
         return START_STICKY
@@ -161,6 +159,8 @@ class LocationTrackingService : Service() {
     override fun onDestroy() {
         Log.i("Service", "Stop command received!")
         writeGPXFile()
+
+        getSharedPreferences(PREFERENCE, MODE_PRIVATE).edit() { putBoolean(RUNNING, false) }
 
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
@@ -179,11 +179,16 @@ class LocationTrackingService : Service() {
     }
 
     private fun createNotification(): Notification {
-        val distanceText = "Distance: " + distance + " meters"
+        val distanceText = buildString {
+            append("Tracking your location. ")
+            append("Current distance: ")
+            append(String.format(Locale.GERMANY, "%.2f", distance))
+            append(" meters")
+        }
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Location Tracking")
-            .setContentText("Tracking your location")
-            .setSmallIcon(R.drawable.ic_menu_compass) // Use your app's icon
+            .setContentText(distanceText)
+            .setSmallIcon(android.R.drawable.ic_menu_compass) // Use your app's icon
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
     }
@@ -200,10 +205,10 @@ class LocationTrackingService : Service() {
 
     val longitude: Double
         // RPC methods to expose data
-        get() = currentLocation?.longitude ?: 0.0
+        get() = locationBuffer.lastOrNull()?.longitude ?: 0.0
 
     val latitude: Double
-        get() = currentLocation?.latitude ?: 0.0
+        get() = locationBuffer.lastOrNull()?.latitude ?: 0.0
 
     val distanceTravelled: Double
         // RPC methods to expose data

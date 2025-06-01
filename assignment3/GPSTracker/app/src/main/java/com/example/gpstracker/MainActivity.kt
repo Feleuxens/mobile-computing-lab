@@ -1,13 +1,13 @@
 package com.example.gpstracker
 
 import android.Manifest
-import android.app.Activity
 import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -18,6 +18,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -26,11 +27,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,12 +52,10 @@ class MainActivity : ComponentActivity() {
     private var permissions by mutableStateOf(false)
 
     // State variables for UI updates
-    private var latitude by mutableStateOf(0.0)
-    private var longitude by mutableStateOf(0.0)
-    private var distance by mutableStateOf(0.0)
-    private var speed by mutableStateOf(0.0)
-
-
+    private var latitude by mutableDoubleStateOf(0.0)
+    private var longitude by mutableDoubleStateOf(0.0)
+    private var distance by mutableDoubleStateOf(0.0)
+    private var speed by mutableDoubleStateOf(0.0)
 
     private val permissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -89,13 +88,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         createGpxFileLauncher = registerForActivityResult(
             ActivityResultContracts.StartActivityForResult()
         ) { result ->
-            if (result.resultCode == Activity.RESULT_OK) {
+            if (result.resultCode == RESULT_OK) {
                 val uri = result.data?.data
                 if (uri != null) {
                     // Persist URI permission
@@ -105,10 +105,14 @@ class MainActivity : ComponentActivity() {
                     )
 
                     startTrackingServiceWithUri(uri)
-
-
                 }
             }
+        }
+
+        val isRunning = getSharedPreferences(LocationTrackingService.PREFERENCE, MODE_PRIVATE).getBoolean(LocationTrackingService.RUNNING, false)
+
+        if (isRunning) {
+
         }
 
 
@@ -129,7 +133,8 @@ class MainActivity : ComponentActivity() {
         permissionsLauncher.launch(
             arrayOf(
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.POST_NOTIFICATIONS
             )
         )
 
@@ -173,26 +178,41 @@ class MainActivity : ComponentActivity() {
     private fun startLocationTracking() {
         if (locationTrackingService == null) {
 
-            val gps_intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                setType("application/gpx+xml")
-                putExtra(Intent.EXTRA_TITLE, "track.gpx")
-            }
-            createGpxFileLauncher.launch(gps_intent)
+            if (!isMyServiceRunning(LocationTrackingService::class.java)) {
+                val gpsIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    setType("application/gpx+xml")
+                    putExtra(Intent.EXTRA_TITLE, "track.gpx")
+                }
+                createGpxFileLauncher.launch(gpsIntent)
 
-            // in response we start the actual service
+                // in response we start the actual service
+            } else {
+                startTrackingServiceWithUri(null)
+
+            }
+
         }
     }
 
-    private fun startTrackingServiceWithUri(uri: Uri) {
-        val intent = Intent(this, LocationTrackingService::class.java).apply {
-            putExtra(LocationTrackingService.FILE_URI, uri.toString())
-        }
+    private fun startTrackingServiceWithUri(uri: Uri?) {
+
         if (!isMyServiceRunning(LocationTrackingService::class.java)) {
+            val intent = Intent(this, LocationTrackingService::class.java).apply {
+                putExtra(LocationTrackingService.FILE_URI, uri!!.toString())
+            }
+
             ContextCompat.startForegroundService(application, intent)
+
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            Toast.makeText(this, "Started Location Tracking", Toast.LENGTH_SHORT).show()
+        } else {
+            val intent = Intent(this, LocationTrackingService::class.java)
+            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            Toast.makeText(this, "connected Location Tracking", Toast.LENGTH_SHORT).show()
+
         }
-        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-        Toast.makeText(this, "Started Location Tracking", Toast.LENGTH_SHORT).show()
+
     }
 
     // Stop the location tracking and unbind the service
@@ -236,7 +256,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationTrackingUI(
     latitude: Double,

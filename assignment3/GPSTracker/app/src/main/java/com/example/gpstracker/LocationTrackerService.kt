@@ -9,6 +9,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.location.Location
+import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.Handler
@@ -25,8 +26,13 @@ import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import androidx.core.net.toUri
 
 class LocationTrackingService : Service() {
+    companion object {
+        private const val CHANNEL_ID = "LocationTrackingChannel"
+        const val FILE_URI = "file_uri"
+    }
 
     inner class LocalBinder : Binder() {
         fun getService(): LocationTrackingService = this@LocationTrackingService
@@ -36,6 +42,11 @@ class LocationTrackingService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
+    private lateinit var ouput_uri: Uri
+
+    private var lastWrite = 0
+    private val locationBuffer = mutableListOf<Location>()
+
     private var currentLocation: Location? = null
     private var distance: Double = 0.0
     private var totalTime: Long = 0
@@ -44,6 +55,8 @@ class LocationTrackingService : Service() {
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     override fun onCreate() {
         super.onCreate()
+
+
 
         Log.i("Service", "Service started!")
 
@@ -69,6 +82,16 @@ class LocationTrackingService : Service() {
                     numUpdates++
                     totalTime += 1000 // Placeholder for actual time difference logic
 
+
+                    locationBuffer.add(location)
+
+                    if (lastWrite < locationBuffer.size - 20) {
+                        lastWrite = locationBuffer.size
+                        writeGPXFile()
+                    }
+
+
+
                     // Send the notification with current distance
                     sendNotification()
                 }
@@ -79,14 +102,57 @@ class LocationTrackingService : Service() {
         startForeground(1, createNotification())
     }
 
+    fun writeGPXFile() {
+        Log.i("Writer", "Try writing gpxfile")
+
+        if (locationBuffer.isEmpty()) return
+
+        val gpxContent = buildGpx(locationBuffer)
+
+        try {
+            contentResolver.openOutputStream(ouput_uri, "wt")?.use { outputStream ->
+                outputStream.write(gpxContent.toByteArray())
+                outputStream.flush()
+            }
+        } catch (e: Exception) {
+            Log.e("LocationService", "Failed to write GPX", e)
+        }
+    }
+
+    fun buildGpx(locationBuffer: MutableList<Location>): String {
+        return buildString {
+            appendLine("""<?xml version="1.0" encoding="UTF-8"?>""")
+            appendLine("""<gpx version="1.1" creator="YourApp" xmlns="http://www.topografix.com/GPX/1/1">""")
+            appendLine("""<metadata>
+  <name>track.gpx</name>
+  <desc>Mobile Computing Assigment</desc>
+  <author>
+   <name>Team10</name>
+  </author>
+ </metadata>""")
+            appendLine("<trk>")
+            appendLine("  <name>Track</name>")
+            appendLine("  <trkseg>")
+            locationBuffer.forEach {
+                appendLine("""    <trkpt lat="${it.latitude}" lon="${it.longitude}"><time>${it.time}</time></trkpt>""")
+            }
+            appendLine("  </trkseg>")
+            appendLine("</trk>")
+            appendLine("</gpx>")
+        }
+
+    }
+
     @RequiresPermission(allOf = [Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION])
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i("Service", "Start command received!")
         // Create LocationRequest using the builder with default configuration
         val locationRequest: LocationRequest = LocationRequest.Builder(200)
             .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-            .setMinUpdateDistanceMeters(10f)
+            // .setMinUpdateDistanceMeters(10f)
             .build()
+
+        ouput_uri = intent?.getStringExtra(FILE_URI)!!.toUri()
 
         fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
         return START_STICKY
@@ -94,6 +160,8 @@ class LocationTrackingService : Service() {
 
     override fun onDestroy() {
         Log.i("Service", "Stop command received!")
+        writeGPXFile()
+
         super.onDestroy()
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
@@ -144,7 +212,4 @@ class LocationTrackingService : Service() {
     val averageSpeed: Double
         get() = if (numUpdates > 0) distance / (totalTime / 1000) else 0.0
 
-    companion object {
-        private const val CHANNEL_ID = "LocationTrackingChannel"
-    }
 }

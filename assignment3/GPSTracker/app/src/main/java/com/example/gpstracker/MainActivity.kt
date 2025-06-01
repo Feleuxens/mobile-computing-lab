@@ -1,11 +1,13 @@
 package com.example.gpstracker
 
 import android.Manifest
+import android.app.Activity
 import android.app.ActivityManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -14,6 +16,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -42,6 +45,7 @@ class MainActivity : ComponentActivity() {
 
     private val handler: Handler = Handler(Looper.getMainLooper())
 
+    private lateinit var createGpxFileLauncher: ActivityResultLauncher<Intent>
     private var locationTrackingService:LocationTrackingService? by mutableStateOf(null)
     private var isBound by mutableStateOf(false)
     private var permissions by mutableStateOf(false)
@@ -51,6 +55,8 @@ class MainActivity : ComponentActivity() {
     private var longitude by mutableStateOf(0.0)
     private var distance by mutableStateOf(0.0)
     private var speed by mutableStateOf(0.0)
+
+
 
     private val permissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -85,6 +91,27 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        createGpxFileLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                val uri = result.data?.data
+                if (uri != null) {
+                    // Persist URI permission
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+
+                    startTrackingServiceWithUri(uri)
+
+
+                }
+            }
+        }
+
+
         setContent {
             GPSTrackerTheme {
                 // Call the composable function to display the UI
@@ -141,16 +168,31 @@ class MainActivity : ComponentActivity() {
         return false
     }
 
+
     // Start the tracking by binding to the service and starting it
     private fun startLocationTracking() {
         if (locationTrackingService == null) {
-            val intent = Intent(this, LocationTrackingService::class.java)
-            if (!isMyServiceRunning(LocationTrackingService::class.java)) {
-                ContextCompat.startForegroundService(application, intent)
+
+            val gps_intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                setType("application/gpx+xml")
+                putExtra(Intent.EXTRA_TITLE, "track.gpx")
             }
-            bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
-            Toast.makeText(this, "Started Location Tracking", Toast.LENGTH_SHORT).show()
+            createGpxFileLauncher.launch(gps_intent)
+
+            // in response we start the actual service
         }
+    }
+
+    private fun startTrackingServiceWithUri(uri: Uri) {
+        val intent = Intent(this, LocationTrackingService::class.java).apply {
+            putExtra(LocationTrackingService.FILE_URI, uri.toString())
+        }
+        if (!isMyServiceRunning(LocationTrackingService::class.java)) {
+            ContextCompat.startForegroundService(application, intent)
+        }
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        Toast.makeText(this, "Started Location Tracking", Toast.LENGTH_SHORT).show()
     }
 
     // Stop the location tracking and unbind the service

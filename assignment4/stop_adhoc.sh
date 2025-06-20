@@ -24,3 +24,6 @@ else
     echo "Process $PID not running. Cleaning up."
     rm -f "$PID_FILE"
 fi
+
+rm -f "$SCRIPT_DIR/adhoc.log"
+rm -f "$SCRIPT_DIR/adhoc_start.log"

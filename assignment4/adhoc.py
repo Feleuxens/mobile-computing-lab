@@ -258,7 +258,7 @@ def listen_for_broadcasts():
                             logging.error(f"No payload found for msg_id {msg_id}")
                             continue
 
-                        send_route_data(nodes, "This is a test payload", receiver)
+                        send_route_data(nodes, payload, receiver)
                     else:
                         # Forward the route reply to the next node
                         next_node = nodes[idx - 1]

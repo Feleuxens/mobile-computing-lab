@@ -1,6 +1,7 @@
 package com.example.firebase
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -22,11 +23,23 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.MutableLiveData
 import com.example.firebase.ui.theme.FirebaseTheme
+import com.google.firebase.FirebaseApp
+import com.google.firebase.Timestamp
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 
-data class CityTemperature(val city: String, val temperature: Double)
+data class CityTemperature(val timestamp: Long, val temperature: Double)
+
 
 class MainActivity : ComponentActivity() {
+    var database: DatabaseReference = FirebaseDatabase.getInstance().getReference()
+    var testRoot = database.child("teams").child("10")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -41,7 +54,32 @@ class MainActivity : ComponentActivity() {
     fun TemperatureData() {
         var cityInput by remember { mutableStateOf("") }
         var temperatureInput by remember { mutableStateOf("") }
-        val cityList = remember { mutableStateListOf<CityTemperature>() }
+        val cityList = remember { mutableStateMapOf<String, CityTemperature>() }
+
+        val tempListener = object : ValueEventListener {
+            override fun onDataChange(dataSnapshot: DataSnapshot) {
+                cityList.clear()
+                for(child in dataSnapshot.children) {
+                    if(child.key == null) continue
+
+                    val values = child.value as Map<String, Double>
+                    var latest: Long = 0
+                    values.forEach {entry ->
+                        Log.i("test", "${entry.key} - ${entry.value}")
+                        val millis = entry.key.toLongOrNull()
+                        if(millis != null && millis > latest) latest = millis
+                    }
+                    // hacky solution but works :D
+                    var temp = values[latest.toString()].toString().toDouble()
+                    cityList[child.key as String] = CityTemperature(latest as Long, temp)
+                }
+            }
+
+            override fun onCancelled(databaseError: DatabaseError) {
+                Log.w("firebase", "loadUpdate:onCancelled", databaseError.toException())
+            }
+        }
+        testRoot.addValueEventListener(tempListener)
 
         Column(
             modifier = Modifier
@@ -77,9 +115,10 @@ class MainActivity : ComponentActivity() {
                 onClick = {
                     val temp = temperatureInput.toDoubleOrNull()
                     if (cityInput.isNotBlank() && temp != null) {
-                        cityList.add(CityTemperature(cityInput.trim(), temp))
+                        testRoot.child(cityInput).child(System.currentTimeMillis().toString()).setValue(temp as Double)
                         cityInput = ""
                         temperatureInput = ""
+
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -91,9 +130,9 @@ class MainActivity : ComponentActivity() {
 
             // Display List of Cities & Temperatures
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(cityList) { cityTemp ->
+                items(cityList.entries.toList()) { entry ->
                     Text(
-                        text = "${cityTemp.city}: ${cityTemp.temperature}°C",
+                        text = "${entry.key}: [${entry.value.timestamp}] ${entry.value.temperature}°C",
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -101,22 +140,6 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
-        }
-    }
-
-    @Composable
-    fun Greeting(name: String, modifier: Modifier = Modifier) {
-        Text(
-            text = "Hello $name!",
-            modifier = modifier
-        )
-    }
-
-    @Preview(showBackground = true)
-    @Composable
-    fun GreetingPreview() {
-        FirebaseTheme {
-            Greeting("Android")
         }
     }
 }

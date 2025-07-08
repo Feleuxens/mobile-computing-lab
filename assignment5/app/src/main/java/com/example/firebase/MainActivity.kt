@@ -16,17 +16,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.MutableLiveData
 import com.example.firebase.ui.theme.FirebaseTheme
-import com.google.firebase.FirebaseApp
-import com.google.firebase.Timestamp
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
@@ -65,7 +60,7 @@ class MainActivity : ComponentActivity() {
                     val values = child.value as Map<String, Double>
                     var latest: Long = 0
                     values.forEach {entry ->
-                        Log.i("test", "${entry.key} - ${entry.value}")
+//                        Log.i("test", "${entry.key} - ${entry.value}")
                         val millis = entry.key.toLongOrNull()
                         if(millis != null && millis > latest) latest = millis
                     }

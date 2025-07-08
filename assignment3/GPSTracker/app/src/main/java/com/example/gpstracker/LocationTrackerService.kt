@@ -188,7 +188,7 @@ class LocationTrackingService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Location Tracking")
             .setContentText(distanceText)
-            .setSmallIcon(android.R.drawable.ic_menu_compass) // Use your app's icon
+            .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
     }

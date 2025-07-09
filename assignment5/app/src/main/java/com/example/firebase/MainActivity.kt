@@ -50,22 +50,33 @@ class MainActivity : ComponentActivity() {
         var cityInput by remember { mutableStateOf("") }
         var temperatureInput by remember { mutableStateOf("") }
         val cityList = remember { mutableStateMapOf<String, CityTemperature>() }
+        var selectedCity by remember { mutableStateOf("") }
+        var averageTemperature by remember { mutableStateOf(0.0) }
 
         val tempListener = object : ValueEventListener {
             override fun onDataChange(dataSnapshot: DataSnapshot) {
                 cityList.clear()
                 for(child in dataSnapshot.children) {
                     if(child.key == null) continue
-
+                    var selected = false
+                    if(child.key.equals(selectedCity)) {
+                        selected = true
+                        averageTemperature = 0.0
+                        Log.i("avg", "reset avg")
+                    }
+                    // add error handling
                     val values = child.value as Map<String, Double>
                     var latest: Long = 0
                     values.forEach {entry ->
-//                        Log.i("test", "${entry.key} - ${entry.value}")
+                        if(selected) {
+                            averageTemperature += entry.value * (1.0/values.size)
+                            Log.i("avg", "increment avg")
+                        }
                         val millis = entry.key.toLongOrNull()
                         if(millis != null && millis > latest) latest = millis
                     }
                     // hacky solution but works :D
-                    var temp = values[latest.toString()].toString().toDouble()
+                    val temp = values[latest.toString()].toString().toDouble()
                     cityList[child.key as String] = CityTemperature(latest as Long, temp)
                 }
             }
@@ -122,17 +133,28 @@ class MainActivity : ComponentActivity() {
             }
 
             Spacer(modifier = Modifier.height(16.dp))
+            if(selectedCity in cityList.keys) {
+                Text(
+                    text = "$selectedCity: ${cityList[selectedCity]?.temperature}°C Daily average: ${"%.2f".format(averageTemperature)}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Display List of Cities & Temperatures
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(cityList.entries.toList()) { entry ->
-                    Text(
-                        text = "${entry.key}: [${entry.value.timestamp}] ${entry.value.temperature}°C",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp)
-                    )
+                    OutlinedButton({selectedCity = entry.key}) {
+                        Text(
+                            text = "${entry.key}: [${entry.value.timestamp}] ${entry.value.temperature}°C",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp)
+                        )
+                    }
                 }
             }
         }

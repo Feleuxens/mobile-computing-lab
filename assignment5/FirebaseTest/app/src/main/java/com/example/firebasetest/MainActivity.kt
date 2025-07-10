@@ -133,7 +133,7 @@ fun TemperatureData(root: DatabaseReference) {
         Spacer(modifier = Modifier.height(16.dp))
         if(selectedCity in cityList.keys) {
             Text(
-                text = "$selectedCity: ${cityList[selectedCity]?.temperature}°C Daily average: ${"%.2f".format(averageTemperature)}°C",
+                text = "$selectedCity: ${cityList[selectedCity]?.temperature}°C Daily average: ${"%.1f".format(averageTemperature)}°C",
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
             )

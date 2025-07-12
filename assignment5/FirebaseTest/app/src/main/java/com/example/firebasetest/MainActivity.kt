@@ -1,10 +1,12 @@
 package com.example.firebasetest
 
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +29,10 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.DatabaseReference
 import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import kotlin.reflect.typeOf
 
 data class CityTemperature(val timestamp: Long, val temperature: Double)
 
@@ -39,12 +45,15 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             FirebaseTestTheme {
-                TemperatureData(testRoot)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    TemperatureData(testRoot)
+                }
             }
         }
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.O)
 @Composable
 fun TemperatureData(root: DatabaseReference) {
     var cityInput by remember { mutableStateOf("") }
@@ -56,26 +65,75 @@ fun TemperatureData(root: DatabaseReference) {
     val tempListener = object : ValueEventListener {
         override fun onDataChange(dataSnapshot: DataSnapshot) {
             cityList.clear()
+
+
             for(child in dataSnapshot.children) {
-                if(child.key == null) continue
-                var selected = false
-                if(child.key.equals(selectedCity)) {
-                    selected = true
-                    averageTemperature = 0.0
-                }
-                // add error handling
-                val values = child.value as Map<String, Double>
-                var latest: Long = 0
-                values.forEach {entry ->
-                    if(selected) {
-                        averageTemperature += entry.value * (1.0/values.size)
+                if(child.key == null) continue // no city name
+                val cityName = child.key
+
+               // if(cityName == "Stuttgart ") {
+
+               //     child.ref.removeValue()
+               //     continue
+               // }
+
+                var averageSum = 0.0
+                var averageCount = 0
+                val today = getCurrentDate()
+
+                var latestTime = 0L
+                var latestTemp: Double? = null
+
+                for(day in child.children) {
+                    if(day.key == null) continue // no date provided
+                    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                    try {
+                        LocalDate.parse(day.key, formatter)
+                    } catch (e: DateTimeParseException) {
+                        Log.i("firebaseEvent", day.key.toString() + " is not a date... skipping")
+
+
+                        continue // not a valid date
                     }
-                    val millis = entry.key.toLongOrNull()
-                    if(millis != null && millis > latest) latest = millis
+
+                    val calculateAverage = day.key == today
+
+                    if(calculateAverage) {
+                        averageTemperature = 0.0 // reset Temperature
+                    }
+
+
+                    for(entry in day.children) {
+                        if(entry == null) continue // no entry
+                        if(entry.key == null) continue // no timestamp provided
+                        if(entry.value == null) continue // no temperature provided
+                        // if(entry.value !is Double ) continue // no Double for the temperature
+
+                        val millis = entry.key!!.toLongOrNull()
+                        val temp = entry.value.toString().toDouble()
+
+                        if(millis != null && millis > latestTime) {
+                            latestTime = millis
+                            latestTemp = temp
+                        }
+
+                        if(calculateAverage) {
+                            averageSum += temp
+                            averageCount++
+                        }
+                    }
                 }
-                // hacky solution but works :D
-                val temp = values[latest.toString()].toString().toDouble()
-                cityList[child.key as String] = CityTemperature(latest as Long, temp)
+
+                if(averageCount == 0) {
+                    averageTemperature = 0.0
+                } else {
+                    averageTemperature = averageSum / averageCount
+                }
+
+                if(latestTime == 0L || latestTemp == null) continue // no temperature found for this city
+
+                cityList[cityName!!] = CityTemperature(latestTime, latestTemp)
+
             }
         }
 
@@ -83,6 +141,7 @@ fun TemperatureData(root: DatabaseReference) {
             Log.w("firebase", "loadUpdate:onCancelled", databaseError.toException())
         }
     }
+
     root.addValueEventListener(tempListener)
 
     Column(
@@ -119,10 +178,10 @@ fun TemperatureData(root: DatabaseReference) {
             onClick = {
                 val temp = temperatureInput.toDoubleOrNull()
                 if (cityInput.isNotBlank() && temp != null) {
-                    root.child(cityInput).child(System.currentTimeMillis().toString()).setValue(temp as Double)
+                    val formattedDate = getCurrentDate()
+                    root.child(cityInput).child(formattedDate).child(System.currentTimeMillis().toString()).setValue(temp as Double)
                     cityInput = ""
                     temperatureInput = ""
-
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -155,5 +214,21 @@ fun TemperatureData(root: DatabaseReference) {
                 }
             }
         }
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.O)
+fun getCurrentDate(): String {
+    val currentDate = LocalDate.now()
+    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+    val formattedDate = currentDate.format(formatter)
+    return formattedDate
+}
+
+fun printSubtree(snapshot: DataSnapshot, indent: String = "") {
+    println("$indent${snapshot.key}: ${snapshot.value}")
+
+    for (child in snapshot.children) {
+        printSubtree(child, indent + "  ")
     }
 }

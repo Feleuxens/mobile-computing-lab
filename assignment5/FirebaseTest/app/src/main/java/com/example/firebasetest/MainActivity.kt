@@ -38,17 +38,19 @@ data class CityTemperature(val timestamp: Long, val temperature: Double)
 
 class MainActivity : ComponentActivity() {
     var database: DatabaseReference = FirebaseDatabase.getInstance().getReference()
-    var testRoot = database.child("teams").child("10")
+    // var dbRoot = database.child("teams").child("10")
+    var dbRoot = database.child("location")
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            FirebaseTestTheme {
+            // FirebaseTestTheme {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    TemperatureData(testRoot)
+                    TemperatureData(dbRoot)
                 }
-            }
+            // }
         }
     }
 }
@@ -60,13 +62,26 @@ fun TemperatureData(root: DatabaseReference) {
     var temperatureInput by remember { mutableStateOf("") }
     val cityList = remember { mutableStateMapOf<String, CityTemperature>() }
     var selectedCity by remember { mutableStateOf("") }
-    var averageTemperature by remember { mutableStateOf(0.0) }
+    var averageTemperature by remember { mutableStateOf("-") }
+
+
+    var lastUpdate by remember { mutableLongStateOf(0L) }
 
     val tempListener = object : ValueEventListener {
         override fun onDataChange(dataSnapshot: DataSnapshot) {
+            val now = System.currentTimeMillis()
+
+            // Only update in 1s intervalls
+            if(now - lastUpdate < 1000) {
+                return
+            }
+            lastUpdate = now
+
+            // printSubtree(dataSnapshot)
             cityList.clear()
 
 
+            println("OUTTER")
             for(child in dataSnapshot.children) {
                 if(child.key == null) continue // no city name
                 val cityName = child.key
@@ -84,13 +99,14 @@ fun TemperatureData(root: DatabaseReference) {
                 var latestTime = 0L
                 var latestTemp: Double? = null
 
+                println("\tINNER " + cityName)
                 for(day in child.children) {
                     if(day.key == null) continue // no date provided
                     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                     try {
                         LocalDate.parse(day.key, formatter)
                     } catch (e: DateTimeParseException) {
-                        Log.i("firebaseEvent", day.key.toString() + " is not a date... skipping")
+                        Log.i("firebaseEvent", "\t\t" + cityName + ": "+ day.key.toString() + " is not a date... skipping")
 
 
                         continue // not a valid date
@@ -98,9 +114,9 @@ fun TemperatureData(root: DatabaseReference) {
 
                     val calculateAverage = day.key == today
 
-                    if(calculateAverage) {
-                        averageTemperature = 0.0 // reset Temperature
-                    }
+                    // if(calculateAverage) {
+                    //     averageTemperature = "-" // reset Temperature
+                    // }
 
 
                     for(entry in day.children) {
@@ -124,10 +140,14 @@ fun TemperatureData(root: DatabaseReference) {
                     }
                 }
 
-                if(averageCount == 0) {
-                    averageTemperature = 0.0
-                } else {
-                    averageTemperature = averageSum / averageCount
+
+                if(selectedCity == cityName) {
+                    if (averageCount == 0) {
+                        averageTemperature = "-"
+                    } else {
+                        val avgTemp = averageSum / averageCount
+                        averageTemperature = "%.1f".format(avgTemp)
+                    }
                 }
 
                 if(latestTime == 0L || latestTemp == null) continue // no temperature found for this city
@@ -179,6 +199,7 @@ fun TemperatureData(root: DatabaseReference) {
                 val temp = temperatureInput.toDoubleOrNull()
                 if (cityInput.isNotBlank() && temp != null) {
                     val formattedDate = getCurrentDate()
+                    println("Add " + cityInput + " " + formattedDate + " " + temp)
                     root.child(cityInput).child(formattedDate).child(System.currentTimeMillis().toString()).setValue(temp as Double)
                     cityInput = ""
                     temperatureInput = ""
@@ -192,7 +213,7 @@ fun TemperatureData(root: DatabaseReference) {
         Spacer(modifier = Modifier.height(16.dp))
         if(selectedCity in cityList.keys) {
             Text(
-                text = "$selectedCity: ${cityList[selectedCity]?.temperature}°C Daily average: ${"%.1f".format(averageTemperature)}°C",
+                text = "$selectedCity: ${cityList[selectedCity]?.temperature}°C Daily average: ${averageTemperature}°C",
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
             )
